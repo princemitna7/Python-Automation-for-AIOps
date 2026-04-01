@@ -8,4 +8,109 @@ pip show requests
 
 ---
 
+Phase 1: Verified the functionality of the Docker SDK connection
+Phase 2: Implemented alert parsing and restart logic
+
+---
+
+nginx-test container is running on port 80, configured with the /stub_status endpoint and using the provided custom Nginx config.
+
+nginx-exporter container is running with --net=host and scraping Nginx’s /stub_status, exposing Prometheus metrics on port 9113.
+
+Prometheus is configured to scrape metrics from localhost:9113 (job: nginx-test, target: localhost:9113).
+
+Alertmanager is configured to send POST alert notifications to your Flask webhook app at http://localhost:5000/webhook.
+
+---
+
+nginx-test Container Stops → Nginx Exporter Fails to Scrape → Prometheus Detects (5s) →
+Alert Fires (5s) → Alertmanager Routes (1s) → Flask Webhook Receives →
+Your Code Restarts Container → Exporter Recovers → Alert Resolves
+
+---
+/etc/prometheus
+
+cat alert.rules.yml 
+groups:
+  - name: container-alerts
+    rules:
+      - alert: InstanceDown
+        expr: nginx_up{job="nginx-test"} == 0
+        for: 5s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down for more than 5 seconds."
+
+---
+
+cat prometheus.yml 
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+
+rule_files:
+  - "/etc/prometheus/alert.rules.yml"
+
+scrape_configs:
+  - job_name: 'nginx-test'
+    static_configs:
+      - targets: ['localhost:9113']
+
+---
+
+/etc/alertmanager
+
+cat alertmanager.yml 
+global:
+  resolve_timeout: 5s
+
+route:
+  receiver: flask_webhook
+  group_wait: 1s
+  group_interval: 5s
+  repeat_interval: 30s
+
+receivers:
+  - name: flask_webhook
+    webhook_configs:
+      - url: 'http://localhost:5000/webhook'
+        send_resolved: true
+
+---
+
+export SLACK_BOT_TOKEN="xoxb-token"
+export SLACK_APP_TOKEN="xapp-token"
+export SLACK_CHANNEL="all-chatops-bot"      # where you're going to add the bot.
+
+---
+
+Created a Slack app with Socket Mode
+Implemented slash command handlers for manual status checks
+Built a Flask webhook receiver for Alertmanager alerts
+Integrated automatic alert notifications to Slack channels
+Queried the Prometheus API with PromQL
+Parsed and formatted monitoring data and alerts
+Posted real-time status updates to Slack
+Combined reactive (manual) and proactive (automatic) monitoring
+Implemented multi-threaded Python architecture
+
+Key Takeaways:
+ChatOps brings operations into the conversation - Everyone can see what's happening and collaborate in real time
+Dual-mode architecture is powerful - Combining slash commands with webhooks provides both manual control and automatic alerting
+Slack Bolt simplifies bot development - Modern framework with built-in support for commands, events, and API calls
+Socket Mode removes infrastructure complexity - No need for public webhooks for bot commands
+Alertmanager webhook integration is straightforward - Flask makes it easy to receive and process alerts
+Prometheus + Alertmanager + Slack = Complete monitoring - Full pipeline from metrics to team notifications
+Threading enables concurrent services - Flask webhook and Slack bot run simultaneously
+
+---
+Container Failure → Prometheus Detects → Alert Fired → Alertmanager Routes → 
+Webhook Receives → Alert Formatted → Posted to Slack → Team Notified!
+---
 

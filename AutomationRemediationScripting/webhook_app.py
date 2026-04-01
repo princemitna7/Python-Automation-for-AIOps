@@ -28,4 +28,6 @@ Found X container(s):
 # curl -X POST http://localhost:5000/webhook
 {"containers_found":2,"status":"success"}
 
+# curl -X POST -H 'Content-Type: application/json' -d '{"alerts":[{"status":"firing","labels":{"alertname":"InstanceDown","instance":"localhost:80"}}]}' http://localhost:5000/webhook
+
 '''
